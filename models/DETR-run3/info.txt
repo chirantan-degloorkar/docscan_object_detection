@@ -1,0 +1,7 @@
+epochs=75
+train_images=130
+val_images=32
+test_images=19
+lr=1e-5
+lr_backbone=1e-4
+weight_decay=1e-4
