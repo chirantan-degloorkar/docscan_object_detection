@@ -6,8 +6,8 @@ import os
 import shutil
 import subprocess
 from PIL import Image
-from inference import loadModel, inference, multiInference
-from img2pdf import readPDF, savePDF
+from utils.inference import loadModel, inference, multiInference
+from utils.img2pdf import readPDF, savePDF
 from torch.multiprocessing import Pool
 
 
@@ -22,7 +22,8 @@ os.makedirs(result_dir, exist_ok=True)
 
 CONFIDENCE_THRESHOLD = 0.5
 IOU_THRESHOLD = 0.6
-MODEL_PATH = 'models/DETR-run7'
+# MODEL_PATH = 'models/DETR-run7'
+MODEL_PATH = 'model/DETR-run5'
 CHECKPOINT_PATH = "models/DETR-run7/ModelCheckpoints2/detr-epoch=47-val_loss=0.53.ckpt"
 
 # Load Model and the Image Processor

@@ -31,8 +31,5 @@ def savePDF(image_dir, pdf_path):
     for path in os.listdir(image_dir):
         im = Image.open(os.path.join(image_dir, path)).convert('RGB')
         imagelist.append(im)
-    # im3 = image3.convert('RGB')
-
+        
     im.save(pdf_path,save_all=True, append_images=imagelist) # type: ignore
-
-# savePDF(image_dir=res_folder)

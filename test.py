@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.data import DataLoader
 from PIL import Image
-from inference2 import loadModel, inference4, inference2, inference3
-from img2pdf import readPDF, savePDF
-from createGroundTruth import create_ground_truth_dict
+from utils.inference2 import loadModel, inference4, inference2, inference3
+from utils.img2pdf import readPDF, savePDF
+from utils.createGroundTruth import create_ground_truth_dict
 import time
 
 from torchvision.ops import box_iou
