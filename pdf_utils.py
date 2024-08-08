@@ -25,7 +25,7 @@ def pdf_to_image_and_detect(pdf_path, output_image_base):
 
             print(f"Page {page_num + 1} saved as {image_path}")
 
-            darknet_command = fr"darknet.exe detector test data\images.data cfg\yolov4-custom.cfg Weights\yolov4-custom_4000.weights {image_path} -thresh 0.4 -ext_output -dont_show -out output.json"
+            darknet_command = fr"darknet.exe detector test data\images.data yolov4-custom.cfg weights\yolov4-custom_4000.weights {image_path} -thresh 0.4 -ext_output -dont_show -out output.json"
             
             try:
                 subprocess.run(darknet_command, shell=True, check=True)
