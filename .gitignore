@@ -175,3 +175,5 @@ cython_debug/
 analysis.ipynb
 output.pdf
 analysis.ipynb
+*.zip
+/results

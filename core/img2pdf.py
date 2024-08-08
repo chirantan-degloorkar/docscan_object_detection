@@ -2,6 +2,8 @@
 import fitz
 from PIL import Image
 import os
+import zipfile
+import shutil
 
 pdf_file = "test.pdf"
 def readPDF(pdf_file, img_dir):
@@ -33,3 +35,21 @@ def savePDF(image_dir, pdf_path):
         imagelist.append(im)
         
     im.save(pdf_path,save_all=True, append_images=imagelist) # type: ignore
+    
+def zipFiles(output_dir, zip_path):
+    """Zips the files in the list to the specified zip file
+
+    Args:
+        file_paths (_type_): list of file paths to zip
+        zip_path (_type_): path to save the zip file
+    """
+    # zip_path = os.path.join(output_dir, "output.zip")        
+    # # Create a zip file of the output directory
+    # shutil.make_archive(zip_path.replace('.zip', ''), 'zip', output_dir)
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(output_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, start=output_dir)
+                zipf.write(file_path, arcname)
