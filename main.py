@@ -1,3 +1,4 @@
+import time
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -7,10 +8,11 @@ import shutil
 import subprocess
 from PIL import Image
 from core.inference import loadModel, inference, multiInference
-from core.img2pdf import readPDF, savePDF, zipFiles
+from core.img2pdf import readPDF, savePDF, zip_dir
 from core.generateSummary import summarize
 from torch.multiprocessing import Pool
-
+from pathlib import Path
+from core import logger
 
 app = FastAPI()
 # Directories to store and load images
@@ -28,7 +30,7 @@ MODEL_PATH = 'models/DETR-run5'
 CHECKPOINT_PATH = "models/DETR-run7/ModelCheckpoints2/detr-epoch=47-val_loss=0.53.ckpt"
 
 # Load Model and the Image Processor
-model, image_processor = loadModel(MODEL_PATH)
+model, image_processor = loadModel(MODEL_PATH) # type: ignore
 
 class PDFUpload(BaseModel):
     file: UploadFile
@@ -44,14 +46,18 @@ async def upload_pdf(pdf_file: UploadFile = File(...)):
         HTTPException: Error uploading or processing PDF
     """
     try:
+        start = time.time()
         #Save uploaded PDF temporarily
         pdf_path = os.path.join(output_dir, pdf_file.filename) # type: ignore
+        
+        print(pdf_file)
         with open(pdf_path, "wb") as buffer:
             shutil.copyfileobj(pdf_file.file, buffer)
         readPDF(pdf_file=pdf_path, img_dir=image_dir)
-        # image_list = os.listdir(image_dir)
         
-        image_paths = [os.path.join(image_dir, fname) for fname in os.listdir(image_dir)]
+        logger.log_message(message=f"EXEC: Extracting Images from {pdf_file.filename}", level=0)
+        # image_list = os.listdir(image_dir)
+        # image_paths = [os.path.join(image_dir, fname) for fname in os.listdir(image_dir)]
         
         results_dict = inference(
             model=model, 
@@ -61,7 +67,10 @@ async def upload_pdf(pdf_file: UploadFile = File(...)):
             CONFIDENCE_THRESHOLD=CONFIDENCE_THRESHOLD,
             IOU_THRESHOLD=IOU_THRESHOLD
         )
+        
+        logger.log_message(message=f"EXEC: Images Annotated", level=0)
         summarize(results_dict, 'results/summary.csv')
+        logger.log_message(message=f"EXEC: Summary Generated", level=0)
         
         # MultiProcessing
         # num_processes = 4  # Adjust based on your CPU cores
@@ -74,34 +83,20 @@ async def upload_pdf(pdf_file: UploadFile = File(...)):
         #     results = pool.starmap(multiInference, args_list)
         
         savePDF(image_dir=result_dir, pdf_path='results/output.pdf')
-        # zip_path = 'output.zip'
-        # try:
-        #     zipFiles('results', zip_path)
-        # except Exception as e:
-        #     print("Error zipping files: ", e)
-            
-        # if os.path.exists(zip_path):
-        #     return FileResponse(zip_path, filename="labeled_images.zip", media_type="application/zip")
-        return FileResponse('results/output.pdf', filename="labeled_images.pdf", media_type="application/pdf") 
-        # return [FileResponse('results/output.pdf', filename="labeled_images.pdf", media_type="application/pdf"), 
-        #         FileResponse('results/summary.csv', filename="summary.csv", media_type="text/csv")]
+        current_dir = Path.cwd()  
+        tozip_dir = current_dir / "results"
+        zip_dir(
+            tozip_dir, current_dir / 'results.zip')
+        end = time.time()
+        print(f"Time taken: {end-start} seconds")
+        logger.log_message(message=f"EXEC: results.zip Generated in {end-start} seconds", level=0)
+        return current_dir / 'results.zip'
+        
     except Exception as e:
+        logger.log_message(message=f"ERROR: {e}", level=1)
         raise HTTPException(status_code=500, detail=f"Error uploading or processing PDF: {e}")
  
-# @app.get("/download-labeled-pdf/")
-# async def download_labeled_pdf():
-#     """ Download the labeled PDF
-    
-#     """
-#     try:
-#         pdf_path = os.path.join(output_dir, "output.pdf")
-#         if os.path.exists(pdf_path):
-#             return FileResponse(pdf_path, filename="labeled_images.pdf", media_type="application/pdf")
-#         else:
-#             raise HTTPException(status_code=404, detail="Labeled PDF not found")
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error downloading PDF: {e}")
-    
+
     
 if __name__ == "__main__":
     import uvicorn
