@@ -95,13 +95,14 @@ def inference(model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, image
         _type_: results_dict (Dictionary containing the results)
     """
     results_dict = {}
-    
+    count = 0
     try:
         for img in os.listdir(image_folder):
             IMAGE_PATH = os.path.join(image_folder, img)
             print(f"Processing {IMAGE_PATH}")
 
             image = cv2.imread(IMAGE_PATH)
+            # image = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             inputs = image_processor(images=image, return_tensors='pt')
 
             inputs = {k: v.to(model.device) for k, v in inputs.items()}
@@ -117,7 +118,7 @@ def inference(model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, image
                 )[0]
             
             detections = sv.Detections.from_transformers(transformers_results=results)
-            labels = [f"{id2label[class_id]} {confidence:.2f}" for _, confidence, class_id, _ in detections]
+            labels = [f"{id2label[class_id]}" for _, confidence, class_id, _ in detections]
             
             print(set(detections.class_id)) 
             box_annotator = sv.BoxAnnotator()
@@ -131,6 +132,8 @@ def inference(model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, image
             add_missing_label(image, image_path, label)
             
             results_dict[IMAGE_PATH.replace('Temp/', '')] = results
+            # results_dict[count] = results
+            count += 1
             
         return results_dict
     except Exception as e:
