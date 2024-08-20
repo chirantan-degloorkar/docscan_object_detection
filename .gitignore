@@ -181,3 +181,5 @@ test.py
 test.py
 /data
 /references
+*.pdf
+*.csv

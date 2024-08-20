@@ -25,6 +25,69 @@ CHECKPOINT = 'facebook/detr-resnet-50'
 
 id2label = {0: 'bar-scale', 1: 'color-stamp', 2: 'detail-labels', 3: 'north-sign'}
 
+
+async def inference_test(model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, images, results_folder):
+    """ Predict the images in the provided list of images
+
+    Args:
+        model: The model to use for prediction
+        image_processor: Image processor
+        CONFIDENCE_THRESHOLD: Confidence threshold above which to consider a detection
+        IOU_THRESHOLD: IOU threshold above which to consider two boxes as the same
+        images (list): List of PIL.Image objects
+        results_folder (str): Folder to save the results
+
+    Returns:
+        dict: Dictionary containing the results
+    """
+    results_dict = {}
+    count = 0
+    try:
+        image_list = []
+        for idx, img in enumerate(images):
+            print(f"Processing image {idx + 1}")
+
+            # Convert the PIL image to a format suitable for your model
+            image_np = np.array(img)  # Convert to numpy array (assuming RGB format)
+            image = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)  # Convert RGB to BGR if necessary
+            inputs = image_processor(images=image, return_tensors='pt')
+
+            inputs = {k: v.to(model.device) for k, v in inputs.items()}
+            with torch.no_grad():
+                outputs = model(**inputs)
+                
+                # Post-process
+                target_sizes = torch.tensor([image.shape[:2]]).to(model.device)
+                results = image_processor.post_process_object_detection(
+                    outputs=outputs,
+                    threshold=CONFIDENCE_THRESHOLD,
+                    target_sizes=target_sizes
+                )[0]
+            
+            detections = sv.Detections.from_transformers(transformers_results=results)
+            labels = [f"{id2label[class_id]}" for _, confidence, class_id, _ in detections]
+            
+            print(set(detections.class_id)) 
+            box_annotator = sv.BoxAnnotator()
+            frame = box_annotator.annotate(scene=image, detections=detections, labels=labels)
+            
+            annotated_img = Image.fromarray(frame)
+            image_path = f"{results_folder}/annotated_image_{idx + 1}.png"
+            
+            all_labels = {0, 1, 2, 3}
+            missing_labels = all_labels - set(detections.class_id)
+            image = add_missing_label(annotated_img, image_path, missing_labels)
+            image_list.append(image)
+            results_dict[f"image_{idx + 1}"] = results
+            count += 1
+            
+        return results_dict, image_list
+    except Exception as e:
+        logger.log_message(message=f"ERROR: Inference - {e}", level=1)
+        print(f"Error processing images: {e}")
+        return None, None
+
+
 def loadModel(MODEL_PATH, CHECKPOINT_PATH=None):
     """Load the model and image processor
 
@@ -59,26 +122,34 @@ def add_missing_label(image, save_path, label):
     """Add missing label to the image
 
     Args:
-        image (_type_): image to add label to
-        save_path (_type_): path where the image will be saved
-        label (_type_): labels to add to the image
+        image (PIL.Image): Image to add label to
+        save_path (str): Path where the image will be saved
+        label (set): Labels to add to the image
     """
     try:
         id2label = {0: 'bar-scale', 1: 'color-stamp', 2: 'detail-labels', 3: 'north-sign'}
         draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
+        
+        # Load a TrueType or OpenType font file with a specific size
+        font_size = 60  # Adjust this size as needed
+        font = ImageFont.truetype("arial.ttf", font_size)  # You can use a different font file if needed
+        
         if label:
             text = ""
             for i in label: 
-                text = text + f"{id2label[i]} not detected" + "\n"
+                text += f"{id2label[i]} not detected\n"
         else:
             text = ""
-        position = (10, 10)
-        draw.text(position, text, fill="red", font=font)
-        image.save(save_path)
+
+        position = (10, 10)  # Position to start the text
+        draw.text(position, text, fill="red", font=font)  # Draw the text with the specified font and size
+
+        image.save(save_path)  # Save the image after adding the label
+        return image
     except Exception as e:
         logger.log_message(message=f"ERROR: Add Missing Label - {e}", level=1)
         print(f"Error adding missing label: {e}")
+        return None
 
 def inference(model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, image_folder, results_folder):
     """ Predict the images in the image folder

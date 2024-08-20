@@ -10,7 +10,33 @@ import numpy as np
 
 from core import logger
 
-pdf_file = "test.pdf"
+# pdf_file = "test.pdf"
+
+def readPDF_test(pdf_file):
+    """Reads a PDF file and returns each page as an image in a list
+
+    Args:
+        pdf_file (str): Path to the PDF file to read
+
+    Returns:
+        list: List of PIL Image objects
+    """
+    img_list = []
+    try:
+        doc = fitz.open(pdf_file)
+        page_count = doc.page_count
+        for i in range(page_count):
+            page = doc.load_page(i)
+            mat = fitz.Matrix(5.0, 5.0)
+            pix = page.get_pixmap(matrix=mat)  # type: ignore
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)  # type: ignore
+            img_list.append(img)  # Append PIL Image to list
+        return img_list  # Return the list of images
+    except Exception as e:
+        logger.log_message(message=f"ERROR: Read PDF - {e}", level=1)
+        print(f"Error reading PDF: {e}")
+        return []
+
 def readPDF(pdf_file, img_dir):
     """Reads a PDF file and saves each page as an image in the specified directory
 
@@ -39,7 +65,7 @@ def readPDF(pdf_file, img_dir):
 
         print(f"Error reading PDF: {e}")
 
-def savePDF(image_dir, pdf_path):
+def savePDF(image_list, pdf_path):
     """Saves images in the image directory as a PDF file
 
     Args:
@@ -47,16 +73,17 @@ def savePDF(image_dir, pdf_path):
         pdf_path (_type_): path to save the PDF file
     """
     try:
-        imagelist = []
-        im = None
-        for path in os.listdir(image_dir):
-            im = Image.open(os.path.join(image_dir, path)).convert('RGB')
-            imagelist.append(im)
-            
-        im.save(pdf_path,save_all=True, append_images=imagelist) # type: ignore
+        im = image_list[0]
+        # imagelist = []
+        # im = None
+        # for path in os.listdir(image_dir):
+        #     im = Image.open(os.path.join(image_dir, path)).convert('RGB')
+        #     imagelist.append(im)
+        #     print(type(im))
+        print(pdf_path)
+        im.save(pdf_path,save_all=True, append_images=image_list[1:]) # type: ignore
     except Exception as e:
         logger.log_message(message=f"ERROR: Save PDF - {e}", level=1)
-
         print(f"Error saving PDF: {e}")
                 
 
@@ -67,6 +94,8 @@ def zip_dir(path: Path, zip_file_path: Path):
         path (Path): directory to zip
         zip_file_path (Path): path to save the zipped file
     """
+    if zip_file_path.exists():
+        os.remove(zip_file_path)
     try:
         files_to_zip = [
             file for file in path.glob('*') if file.is_file()]
@@ -75,7 +104,7 @@ def zip_dir(path: Path, zip_file_path: Path):
             for file in files_to_zip:
                 print(f"Processed - {file.name}")
                 zip_f.write(file, file.name)
-            print("Zip File Created")
+            print(f"Zip File - {zip_file_path} Created")
     except Exception as e:
         logger.log_message(message=f"ERROR: Zip File - {e}", level=1)
 

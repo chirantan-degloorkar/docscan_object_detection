@@ -4,17 +4,17 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import fitz  
 from datetime import datetime
-
 import os
 import shutil
 import subprocess
 from PIL import Image
-from core.inference import loadModel, inference, multiInference
-from core.img2pdf import readPDF, savePDF, zip_dir, delete_directory_contents
+from core.inference import loadModel, inference, multiInference, inference_test
+from core.img2pdf import readPDF, savePDF, zip_dir, delete_directory_contents, readPDF_test
 from core.generateSummary import summarize
 from torch.multiprocessing import Pool
 from pathlib import Path
 from core import logger
+from fastapi import BackgroundTasks
 
 app = FastAPI()
 # Directories to store and load images
@@ -40,76 +40,67 @@ model, image_processor = loadModel(MODEL_PATH) # type: ignore
 class PDFUpload(BaseModel):
     file: UploadFile
     
+
 @app.post("/detr/")
-async def upload_pdf(pdf_file: UploadFile = File(...)):
-    """ Upload the PDF file and process it
+async def upload_pdf(background_tasks: BackgroundTasks, pdf_file: UploadFile = File(...)):
+    """ Upload the PDF file and process it asynchronously """
+    
+    logger.log_message(message=f"================================", level=0)
+    
+    pdf_path = os.path.join(output_dir, pdf_file.filename) # type: ignore
+    with open(pdf_path, "wb") as buffer:
+        shutil.copyfileobj(pdf_file.file, buffer)
+    logger.log_message(message=f"EXEC: {pdf_file.filename} received", level=0)
+    
+    # Extract images from PDF as a list
+    images = readPDF_test(pdf_path)
+    logger.log_message(message=f"EXEC: Images Extracted", level=0)
+    
+    if not images:
+        raise HTTPException(status_code=500, detail="Error reading PDF or no images found")
+    
+    # Add the inference task to the background
+    
+    path = await process_pdf_images(images, pdf_file.filename)
+    # background_tasks.add_task(process_pdf_images, images, pdf_file.filename)
+    
+    # return {"message": "PDF is being processed"}
+    return path
 
-    Args:
-        pdf_file (UploadFile, optional): PDF file to upload. Defaults to File(...).
+async def process_pdf_images(images, filename):
+    """ Function to perform inference on the list of images """
+    start = time.time()
+    
+    results_dict, image_list = await inference_test(
+        model=model, 
+        image_processor=image_processor, 
+        images=images,  # Pass the list of images here
+        results_folder=result_dir,
+        CONFIDENCE_THRESHOLD=CONFIDENCE_THRESHOLD,
+        IOU_THRESHOLD=IOU_THRESHOLD
+    )
+    
+    filename = filename.replace('.pdf', '')
+    os.makedirs(f'results/{filename}', exist_ok=True)
+    summarize(results_dict, f'results/{filename}/summary_{datetime.now().date()}.csv')
+    logger.log_message(message=f"EXEC: Summary Generated", level=0)
 
-    Raises:
-        HTTPException: Error uploading or processing PDF
-    """
-    try:
-        delete_directory_contents(dir_list)
-        start = time.time()
-        #Save uploaded PDF temporarily
-        pdf_path = os.path.join(output_dir, pdf_file.filename) # type: ignore
-        
-        print(pdf_file)
-        with open(pdf_path, "wb") as buffer:
-            shutil.copyfileobj(pdf_file.file, buffer)
-        readPDF(pdf_file=pdf_path, img_dir=image_dir)
-        logger.log_message(message=f"EXEC: Extracting Images from {pdf_file.filename}", level=0)
-        # image_list = os.listdir(image_dir)
-        # image_paths = [os.path.join(image_dir, fname) for fname in os.listdir(image_dir)]
-        
-        results_dict = inference(
-            model=model, 
-            image_processor=image_processor, 
-            # image_list=image_list,
-            image_folder=image_dir, 
-            results_folder=result_dir,
-            CONFIDENCE_THRESHOLD=CONFIDENCE_THRESHOLD,
-            IOU_THRESHOLD=IOU_THRESHOLD
-        )
-        
-        logger.log_message(message=f"EXEC: Images Annotated", level=0)
-        summarize(results_dict, f'results/summary_{datetime.now().date()}.csv')
-        logger.log_message(message=f"EXEC: Summary Generated", level=0)
-        
-        # MultiProcessing
-        # num_processes = 4  # Adjust based on your CPU cores
-        # # Prepare arguments for each process
-        # args_list = [
-        #     (model, image_processor, CONFIDENCE_THRESHOLD, IOU_THRESHOLD, image_path, result_dir)
-        #     for image_path in image_paths
-        # ]
-        # with Pool(num_processes) as pool:
-        #     results = pool.starmap(multiInference, args_list)
-        
-        savePDF(image_dir=result_dir, pdf_path=f'results/output_{datetime.now().date()}.pdf')
-        
-        ## Create a zip file
-        current_dir = Path.cwd()  
-        tozip_dir = current_dir / "results"
-        zip_path = current_dir / f'{pdf_file.filename}_results_{datetime.now().date()}.zip'
-        zip_dir(tozip_dir, zip_path)
-        end = time.time()
-        
-        
-        print(f"Time taken: {end-start} seconds")
-        logger.log_message(message=f"EXEC: results.zip Generated in {end-start} seconds", level=0)
-        
-        delete_directory_contents(dir_list)
-        
-        return zip_path
-        
-    except Exception as e:
-        logger.log_message(message=f"ERROR: {e}", level=1)
-        raise HTTPException(status_code=500, detail=f"Error uploading or processing PDF: {e}")
- 
+    savePDF(image_list=image_list, pdf_path=f'results/{filename}/output_{datetime.now().date()}.pdf')
+    logger.log_message(message=f"EXEC: PDF saved", level=0)
+    # Create a zip file
+    current_dir = Path.cwd() / 'results'
+    tozip_dir = current_dir / f"{filename}"
+    zip_path = tozip_dir / f'{filename}_results_{datetime.now().date()}.zip'
+    zip_dir(tozip_dir, zip_path)
+    end = time.time()
+    logger.log_message(message=f"EXEC: {filename} Generated in {end - start} seconds", level=0)
+    
+    # delete_directory_contents(dir_list)
+    return tozip_dir
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
+    
+# Run the FastAPI server using the command:
+# uvicorn alt:app --reload / --workers 4

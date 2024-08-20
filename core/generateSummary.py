@@ -20,7 +20,7 @@ def summarize(results, path):
         rows = []
         # Populate the new rows
         for idx, image_name in enumerate(image_names):
-            row = {'page_no': idx}
+            row = {'page_no': idx+1}
             image_df = predictions_df[predictions_df['image'] == image_name]
             for label in labels:
                 label_present = any(image_df['labels'] == label)
